@@ -78,8 +78,26 @@ class ExistsIn
             return true;
         }
 
+        $nulls = 0;
+        $schema = $this->_repository->schema();
+        foreach ($this->_fields as $field) {
+            if ($schema->isNullable($field) && $entity->get($field) === null) {
+                $nulls++;
+            }
+        }
+        if ($nulls === count($this->_fields)) {
+            return true;
+        }
+
+        $alias = $this->_repository->alias();
+        $primary = array_map(
+            function ($key) use ($alias) {
+                return "$alias.$key";
+            },
+            (array)$this->_repository->primaryKey()
+        );
         $conditions = array_combine(
-            (array)$this->_repository->primaryKey(),
+            $primary,
             $entity->extract($this->_fields)
         );
         return $this->_repository->exists($conditions);

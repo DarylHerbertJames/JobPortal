@@ -16,6 +16,7 @@ namespace Cake\Validation;
 
 use Cake\Utility\Text;
 use LogicException;
+use NumberFormatter;
 use RuntimeException;
 
 /**
@@ -479,9 +480,13 @@ class Validation
         }
 
         // account for localized floats.
-        $data = localeconv();
-        $check = str_replace($data['thousands_sep'], '', $check);
-        $check = str_replace($data['decimal_point'], '.', $check);
+        $locale = ini_get('intl.default_locale') ?: 'en_US';
+        $formatter = new NumberFormatter($locale, NumberFormatter::DECIMAL);
+        $decimalPoint = $formatter->getSymbol(NumberFormatter::DECIMAL_SEPARATOR_SYMBOL);
+        $groupingSep = $formatter->getSymbol(NumberFormatter::GROUPING_SEPARATOR_SYMBOL);
+
+        $check = str_replace($groupingSep, '', $check);
+        $check = str_replace($decimalPoint, '.', $check);
 
         return static::_check($check, $regex);
     }
@@ -806,7 +811,7 @@ class Validation
      * an array.
      *
      * @param array $params Parameters sent to validation method
-     * @return void
+     * @return array
      */
     protected static function _defaults($params)
     {

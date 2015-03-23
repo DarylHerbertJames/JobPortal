@@ -51,8 +51,8 @@ class Type
      * @var array
      */
     protected static $_basicTypes = [
-        'string' => ['callback' => 'strval'],
-        'text' => ['callback' => 'strval'],
+        'string' => ['callback' => ['\Cake\Database\Type', 'strval']],
+        'text' => ['callback' => ['\Cake\Database\Type', 'strval']],
         'boolean' => [
             'callback' => ['\Cake\Database\Type', 'boolval'],
             'pdo' => PDO::PARAM_BOOL
@@ -159,7 +159,7 @@ class Type
      */
     public function toDatabase($value, Driver $driver)
     {
-        return $this->_basicTypeCast($value, $driver);
+        return $this->_basicTypeCast($value);
     }
 
     /**
@@ -171,7 +171,7 @@ class Type
      */
     public function toPHP($value, Driver $driver)
     {
-        return $this->_basicTypeCast($value, $driver);
+        return $this->_basicTypeCast($value);
     }
 
     /**
@@ -179,15 +179,13 @@ class Type
      * If it is, returns converted value
      *
      * @param mixed $value value to be converted to PHP equivalent
-     * @param Driver $driver object from which database preferences and configuration will be extracted
      * @return mixed
      */
-    protected function _basicTypeCast($value, Driver $driver)
+    protected function _basicTypeCast($value)
     {
         if ($value === null) {
             return null;
         }
-
         if (!empty(self::$_basicTypes[$this->_name])) {
             $typeInfo = self::$_basicTypes[$this->_name];
             if (isset($typeInfo['callback'])) {
@@ -235,6 +233,22 @@ class Type
     }
 
     /**
+     * Type converter for string values.
+     *
+     * Will convert values into strings
+     *
+     * @param mixed $value The value to convert to a string.
+     * @return bool
+     */
+    public static function strval($value)
+    {
+        if (is_array($value)) {
+            $value = '';
+        }
+        return strval($value);
+    }
+
+    /**
      * Generate a new primary key value for a given type.
      *
      * This method can be used by types to create new primary key values
@@ -259,6 +273,6 @@ class Type
      */
     public function marshal($value)
     {
-        return $value;
+        return $this->_basicTypeCast($value);
     }
 }

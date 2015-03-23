@@ -2,7 +2,7 @@
 namespace App\Controller;
 
 use App\Controller\AppController;
-
+use Cake\Event\Event;
 /**
  * Employers Controller
  *
@@ -10,6 +10,11 @@ use App\Controller\AppController;
  */
 class EmployersController extends AppController
 {
+    public function beforeFilter(Event $event)
+    {
+        parent::beforeFilter($event);
+        $this->Auth->allow(['add', 'register']);
+    }
 
     /**
      * Index method
@@ -40,6 +45,7 @@ class EmployersController extends AppController
         $this->set('employer', $employer);
         $this->set('_serialize', ['employer']);
     }
+
 
     /**
      * Add method

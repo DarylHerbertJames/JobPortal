@@ -2,7 +2,7 @@
 namespace App\Controller;
 
 use App\Controller\AppController;
-
+use Cake\Event\Event;
 /**
  * Users Controller
  *
@@ -10,17 +10,53 @@ use App\Controller\AppController;
  */
 class UsersController extends AppController
 {
+    public function beforeFilter(Event $event)
+    {
+        parent::beforeFilter($event);
+        $this->Auth->allow([
+            'logout', 'forgot_password', 'reset_password', 'change_password'
+        ]);
+    }
 
     /**
-     * Index method
+     * Method to logged in a user
      *
-     * @return void
+     * @return \Cake\Network\Response|void
      */
-    public function index()
+    public function login()
     {
-        $this->set('users', $this->paginate($this->Users));
-        $this->set('_serialize', ['users']);
+        if($this->Auth->user('id')) {
+            $this->Flash->error('You are already logged in.');
+            return $this->redirect($this->Auth->redirectUrl());
+        }
+
+        if ($this->request->is('post')) {
+            $user = $this->Auth->identify();
+            if ($user) {
+                // Logged the user in
+                $this->Auth->setUser($user);
+                // Update last login field
+                $this->Users->updateLastLogin($this->Auth->user('id'));
+                // Check user role if employer
+                if ($this->Auth->user('role') == 'employer') {
+                    // Redirect to employer dashboard
+                    return $this->redirect(['controller' => 'Employers', 'action' => 'index']);
+                }
+                return $this->redirect($this->Auth->redirectUrl());
+            }
+            $this->Flash->error(__('Invalid username or password, try again'));
+        }
+
     }
+    /**
+     * Logout method
+     * @return \Cake\Network\Response|void
+     */
+    public function logout()
+    {
+        return $this->redirect($this->Auth->logout());
+    }
+
 
     /**
      * View method

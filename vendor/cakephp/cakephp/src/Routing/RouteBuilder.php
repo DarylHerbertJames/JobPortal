@@ -216,19 +216,33 @@ class RouteBuilder
      * ```
      *
      * The above would generate both resource routes for `/articles`, and `/articles/:article_id/comments`.
+     * You can use the `map` option to connect additional resource methods:
+     *
+     * ```
+     * $routes->resources('Articles', [
+     *   'map' => ['deleteAll' => ['action' => 'deleteAll', 'method' => 'DELETE']]
+     * ]);
+     * ```
+     *
+     * In addition to the default routes, this would also connect a route for `/articles/delete_all`.
+     * By default the path segment will match the key name. You can use the 'path' key inside the resource
+     * definition to customize the path name.
      *
      * ### Options:
      *
      * - 'id' - The regular expression fragment to use when matching IDs. By default, matches
      *    integer values and UUIDs.
+     * - 'inflect' - Choose the inflection method used on the resource name. Defaults to 'underscore'.
      * - 'only' - Only connect the specific list of actions.
      * - 'actions' - Override the method names used for connecting actions.
+     * - 'map' - Additional resource routes that should be connected. If you define 'only' and 'map',
+     *   make sure that your mapped methods are also in the 'only' list.
      *
      * @param string $name A controller name to connect resource routes for.
      * @param array|callable $options Options to use when generating REST routes, or a callback.
      * @param callable|null $callback An optional callback to be executed in a nested scope. Nested
      *   scopes inherit the existing path and 'id' parameter.
-     * @return array Array of mapped resources
+     * @return void
      */
     public function resources($name, $options = [], $callback = null)
     {
@@ -238,22 +252,33 @@ class RouteBuilder
         }
         $options += [
             'connectOptions' => [],
+            'inflect' => 'underscore',
             'id' => static::ID . '|' . static::UUID,
-            'only' => ['index', 'update', 'create', 'view', 'delete'],
+            'only' => [],
             'actions' => [],
+            'map' => [],
         ];
-        $options['only'] = (array)$options['only'];
-        $connectOptions = $options['connectOptions'];
 
-        $urlName = Inflector::underscore($name);
+        foreach ($options['map'] as $k => $mapped) {
+            $options['map'][$k] += ['method' => 'GET', 'path' => $k, 'action' => ''];
+        }
 
         $ext = null;
         if (!empty($options['_ext'])) {
             $ext = $options['_ext'];
         }
 
-        foreach (static::$_resourceMap as $method => $params) {
-            if (!in_array($method, $options['only'], true)) {
+        $connectOptions = $options['connectOptions'];
+        $urlName = Inflector::{$options['inflect']}($name);
+        $resourceMap = array_merge(static::$_resourceMap, $options['map']);
+
+        $only = (array)$options['only'];
+        if (empty($only)) {
+            $only = array_keys($resourceMap);
+        }
+
+        foreach ($resourceMap as $method => $params) {
+            if (!in_array($method, $only, true)) {
                 continue;
             }
 
@@ -325,6 +350,10 @@ class RouteBuilder
      * - `routeClass` is used to extend and change how individual routes parse requests
      *   and handle reverse routing, via a custom routing class.
      *   Ex. `'routeClass' => 'SlugRoute'`
+     * -  `persist` is used to define which route parameters should be automatically
+     *   included when generating new URLs. You can override persistent parameters
+     *   by redefining them in a URL or remove them by setting the parameter to `false`.
+     *   Ex. `'persist' => ['lang']`
      * - `_name` is used to define a specific name for routes. This can be used to optimize
      *   reverse routing lookups. If undefined a name will be generated for each
      *   connected route.

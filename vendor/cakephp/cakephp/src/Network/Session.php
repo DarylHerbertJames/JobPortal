@@ -416,7 +416,7 @@ class Session
      *
      * @param string|array $name Name of variable
      * @param string|null $value Value to write
-     * @return bool True if the write was successful, false if the write failed
+     * @return void
      */
     public function write($name, $value = null)
     {
@@ -480,7 +480,7 @@ class Session
     /**
      * Used to write new data to _SESSION, since PHP doesn't like us setting the _SESSION var itself.
      *
-     * @param array &$old Set of old variables => values
+     * @param array $old Set of old variables => values
      * @param array $new New set of variable => value
      * @return void
      */

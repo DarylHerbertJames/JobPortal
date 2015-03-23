@@ -37,5 +37,46 @@ class AppController extends Controller
     public function initialize()
     {
         $this->loadComponent('Flash');
+        $this->loadComponent('Csrf'); // Enable Csrf protection
+        $this->loadComponent('Auth', [
+            'authenticate'   => [
+                'Form' => [
+                    'fields' => ['username' => 'email', 'password' => 'password']
+                ]
+            ],
+            'authorize'      => 'Controller',
+            'loginRedirect'  => [
+                'controller' => 'Pages',
+                'action'     => 'display',
+                'home'
+            ],
+            'logoutRedirect' => [
+                'controller' => 'Pages',
+                'action'     => 'display',
+                'home'
+            ]
+        ]);
+
+        if ($this->Auth)
+            $this->set('userDetails', $this->Auth->user());
+
+    }
+
+    public function isAuthorized($user)
+    {
+        // Controller access for jobseekers
+        if (in_array($this->request->controller, ['Jobseekers'])
+            AND $this->Auth->user('role') == 'jobseeker'
+        ) {
+            return (bool) $this->Auth->user('role') == 'jobseeker';
+        }
+        // Controller access for employers
+        if (in_array($this->request->controller, ['Employers'])
+            AND $this->Auth->user('role') == 'employer'
+        ) {
+            return (bool) $this->Auth->user('role') == 'employer';
+        }
+
+        return false;
     }
 }

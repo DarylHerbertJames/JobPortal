@@ -100,6 +100,11 @@ class Router
      */
     const UUID = '[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}';
 
+    /**
+     * The route collection routes would be added to.
+     *
+     * @var \Cake\Routing\RouteCollection
+     */
     protected static $_collection;
 
     /**
@@ -269,9 +274,14 @@ class Router
      *    integer values and UUIDs.
      * - 'prefix' - Routing prefix to use for the generated routes. Defaults to ''.
      *   Using this option will create prefixed routes, similar to using Routing.prefixes.
+     * - 'only' - Only connect the specific list of actions.
+     * - 'actions' - Override the method names used for connecting actions.
+     * - 'map' - Additional resource routes that should be connected. If you define 'only' and 'map',
+     *   make sure that your mapped methods are also in the 'only' list.
      *
      * @param string|array $controller A controller name or array of controller names (i.e. "Posts" or "ListItems")
      * @param array $options Options to use when generating REST routes
+     * @see \Cake\Routing\RouteBuilder::resources()
      * @return void
      */
     public static function mapResources($controller, $options = [])
@@ -294,18 +304,22 @@ class Router
             if ($plugin && $prefix) {
                 $path = '/' . implode('/', [$prefix, $pluginUrl]);
                 $params = ['prefix' => $prefix, 'plugin' => $plugin];
-                return static::scope($path, $params, $callback);
+                static::scope($path, $params, $callback);
+                return;
             }
 
             if ($prefix) {
-                return static::prefix($prefix, $callback);
+                static::prefix($prefix, $callback);
+                return;
             }
 
             if ($plugin) {
-                return static::plugin($plugin, $callback);
+                static::plugin($plugin, $callback);
+                return;
             }
 
-            return static::scope('/', $callback);
+            static::scope('/', $callback);
+            return;
         }
     }
 
@@ -460,7 +474,7 @@ class Router
      *
      * ```
      * Router::addUrlFilter(function ($params, $request) {
-     *  if (isset($request->params['lang']) && !isset($params['lang']) {
+     *  if (isset($request->params['lang']) && !isset($params['lang'])) {
      *    $params['lang'] = $request->params['lang'];
      *  }
      *  return $params;
@@ -602,7 +616,7 @@ class Router
             }
 
             $url = static::_applyUrlFilters($url);
-            $output = static::$_collection->match($url, static::$_requestContext);
+            $output = static::$_collection->match($url, static::$_requestContext + ['params' => $params]);
         } else {
             $plainString = (
                 strpos($url, 'javascript:') === 0 ||
@@ -880,14 +894,21 @@ class Router
      * to the `Controller\Admin\Api\` namespace.
      *
      * @param string $name The prefix name to use.
+     * @param array|callable $params An array of routing defaults to add to each connected route.
+     *   If you have no parameters, this argument can be a callable.
      * @param callable $callback The callback to invoke that builds the prefixed routes.
      * @return void
      */
-    public static function prefix($name, $callback)
+    public static function prefix($name, $params = [], $callback = null)
     {
+        if ($callback === null) {
+            $callback = $params;
+            $params = [];
+        }
         $name = Inflector::underscore($name);
         $path = '/' . $name;
-        static::scope($path, ['prefix' => $name], $callback);
+        $params = array_merge($params, ['prefix' => $name]);
+        static::scope($path, $params, $callback);
     }
 
     /**
@@ -942,6 +963,3 @@ class Router
         include CONFIG . 'routes.php';
     }
 }
-
-//Save the initial state
-Router::reload();

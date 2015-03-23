@@ -105,6 +105,7 @@ class Marshaller
         $propertyMap = $this->_buildPropertyMap($options);
 
         $schema = $this->_table->schema();
+        $primaryKey = $schema->primaryKey();
         $entityClass = $this->_table->entityClass();
         $entity = new $entityClass();
         $entity->source($this->_table->registryAlias());
@@ -116,7 +117,6 @@ class Marshaller
         }
 
         $errors = $this->_validate($data, $options, true);
-        $primaryKey = $schema->primaryKey();
         $properties = [];
         foreach ($data as $key => $value) {
             if (!empty($errors[$key])) {
@@ -262,6 +262,7 @@ class Marshaller
      */
     protected function _belongsToMany(Association $assoc, array $data, $options = [])
     {
+        // Accept _ids = [1, 2]
         $associated = isset($options['associated']) ? $options['associated'] : [];
         $hasIds = array_key_exists('_ids', $data);
         if ($hasIds && is_array($data['_ids'])) {
@@ -270,8 +271,24 @@ class Marshaller
         if ($hasIds) {
             return [];
         }
+        $data = array_values($data);
 
-        $records = $this->many($data, $options);
+        // Accept [ [id => 1], [id = 2] ] style.
+        $primaryKey = array_flip($assoc->target()->schema()->primaryKey());
+        if (array_intersect_key($primaryKey, current($data)) === $primaryKey) {
+            $primaryCount = count($primaryKey);
+            $query = $assoc->find();
+            foreach ($data as $row) {
+                $keys = array_intersect_key($row, $primaryKey);
+                if (count($keys) === $primaryCount) {
+                    $query->orWhere($keys);
+                }
+            }
+            $records = $query->toArray();
+        } else {
+            $records = $this->many($data, $options);
+        }
+
         $joint = $assoc->junction();
         $jointMarshaller = $joint->marshaller();
 
@@ -355,7 +372,7 @@ class Marshaller
 
         $errors = $this->_validate($data + $keys, $options, $isNew);
         $schema = $this->_table->schema();
-        $properties = [];
+        $properties = $marshalledAssocs = [];
         foreach ($data as $key => $value) {
             if (!empty($errors[$key])) {
                 continue;
@@ -367,6 +384,7 @@ class Marshaller
             if (isset($propertyMap[$key])) {
                 $assoc = $propertyMap[$key]['association'];
                 $value = $this->_mergeAssociation($original, $assoc, $value, $propertyMap[$key]);
+                $marshalledAssocs[$key] = true;
             } elseif ($columnType) {
                 $converter = Type::build($columnType);
                 $value = $converter->marshal($value);
@@ -384,12 +402,22 @@ class Marshaller
         if (!isset($options['fieldList'])) {
             $entity->set($properties);
             $entity->errors($errors);
+
+            foreach (array_keys($marshalledAssocs) as $field) {
+                if ($properties[$field] instanceof EntityInterface) {
+                    $entity->dirty($field, $properties[$field]->dirty());
+                }
+            }
             return $entity;
         }
 
         foreach ((array)$options['fieldList'] as $field) {
             if (array_key_exists($field, $properties)) {
                 $entity->set($field, $properties[$field]);
+                if ($properties[$field] instanceof EntityInterface &&
+                    isset($marshalledAssocs[$field])) {
+                    $entity->dirty($assoc, $properties[$field]->dirty());
+                }
             }
         }
 
@@ -451,7 +479,6 @@ class Marshaller
             }
 
             $key = implode(';', $entity->extract($primary));
-
             if ($key === null || !isset($indexed[$key])) {
                 continue;
             }
@@ -471,11 +498,13 @@ class Marshaller
                 return $query->orWhere($query->newExpr()->and_(array_combine($primary, $keys)));
             }, $this->_table->find());
 
-        if (count($maybeExistentQuery->clause('where'))) {
+        if (!empty($indexed) && count($maybeExistentQuery->clause('where'))) {
             foreach ($maybeExistentQuery as $entity) {
                 $key = implode(';', $entity->extract($primary));
-                $output[] = $this->merge($entity, $indexed[$key], $options);
-                unset($indexed[$key]);
+                if (isset($indexed[$key])) {
+                    $output[] = $this->merge($entity, $indexed[$key], $options);
+                    unset($indexed[$key]);
+                }
             }
         }
 
@@ -521,7 +550,7 @@ class Marshaller
      * @param \Cake\ORM\Association $assoc The association to marshall
      * @param array $value The data to hydrate
      * @param array $options List of options.
-     * @return mixed
+     * @return array
      */
     protected function _mergeBelongsToMany($original, $assoc, $value, $options)
     {
@@ -538,8 +567,26 @@ class Marshaller
             return $this->mergeMany($original, $value, $options);
         }
 
+        return $this->_mergeJoinData($original, $assoc, $value, $options);
+    }
+
+    /**
+     * Merge the special _joinData property into the entity set.
+     *
+     * @param \Cake\Datasource\EntityInterface $original The original entity
+     * @param \Cake\ORM\Association $assoc The association to marshall
+     * @param array $value The data to hydrate
+     * @param array $options List of options.
+     * @return array An array of entities
+     */
+    protected function _mergeJoinData($original, $assoc, $value, $options)
+    {
+        $associated = isset($options['associated']) ? $options['associated'] : [];
         $extra = [];
         foreach ($original as $entity) {
+            // Mark joinData as accessible so we can marshal it properly.
+            $entity->accessible('_joinData', true);
+
             $joinData = $entity->get('_joinData');
             if ($joinData && $joinData instanceof EntityInterface) {
                 $extra[spl_object_hash($entity)] = $joinData;
@@ -558,8 +605,14 @@ class Marshaller
         foreach ($records as $record) {
             $hash = spl_object_hash($record);
             $value = $record->get('_joinData');
+
+            if (!is_array($value)) {
+                $record->unsetProperty('_joinData');
+                continue;
+            }
+
             if (isset($extra[$hash])) {
-                $record->set('_joinData', $marshaller->merge($extra[$hash], (array)$value, $nested));
+                $record->set('_joinData', $marshaller->merge($extra[$hash], $value, $nested));
             } else {
                 $joinData = $marshaller->one($value, $nested);
                 $record->set('_joinData', $joinData);
